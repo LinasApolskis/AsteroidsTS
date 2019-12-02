@@ -174,7 +174,7 @@ class Server implements GameEventsHandler {
     }
 
 }
-
+//Singleton
 class SingletonServer {
     private static instance: Server;
 

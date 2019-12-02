@@ -36,7 +36,7 @@ export class ServerGameData {
     private readonly players: Map<string, ServerPlayer> = new Map()
     // todo: change list to map for faster add/remove/query
     private readonly bulletHouse: BulletHouse = new BulletHouse()
-    private readonly asteroids: (ServerAsteroid|ServerAsteroidBig|ServerAsteroidSmall)[] = []
+    private readonly asteroids: (ServerAsteroid|ServerAsteroidBig|ServerAsteroidSmall|IServerAsteroid)[] = []
 
     private readonly minBigAsteroidCount = 7
     private readonly bigAsteroidCountMultiplesOfPlayer = 3
@@ -53,14 +53,22 @@ export class ServerGameData {
         const h = this.height
 
         // Factory pattern
-        const asteroidFactory = new AsteroidFactory(gameEventsHandler)
+        const asteroidBigFactory = new AsteroidBigFactory(gameEventsHandler)
+        const asteroidBaseFactory = new AsteroiBaseFactory(gameEventsHandler)
+        const asteroidSmallFactory = new AsteroidSmallFactory(gameEventsHandler)
+
+
+        //Builder pattern
+        const asteroidBuilder = new AsteroidBuilder(gameEventsHandler)
 
         // add initial asteroids
+        const asteroidas = new ServerAsteroid(w, h, 2, gameEventsHandler)
         for (let i = 0; i < this.minBigAsteroidCount; i++) {
-            //this.asteroids.push(new ServerAsteroid(w, h, true, gameEventsHandler))
-            this.asteroids.push(asteroidFactory.createAsteroid("big"))
-            this.asteroids.push(asteroidFactory.createAsteroid("small"))
-            this.asteroids.push(asteroidFactory.createAsteroid("other"))
+            //this.asteroids.push(new ServerAsteroid(w, h, 2, gameEventsHandler))
+            this.asteroids.push(asteroidas.clone())
+            this.asteroids.push(asteroidBigFactory.CreateAsteroid())
+            this.asteroids.push(asteroidSmallFactory.CreateAsteroid())
+            this.asteroids.push(asteroidBaseFactory.CreateAsteroid())
             this.curBigAsteroidsCount++
         }
 
@@ -149,7 +157,7 @@ export class ServerGameData {
         }
     }
 
-    breakAsteroid(asteroid: ServerAsteroid | ServerAsteroidSmall | ServerAsteroidBig): void {
+    breakAsteroid(asteroid: ServerAsteroid | ServerAsteroidSmall | ServerAsteroidBig | IServerAsteroid): void {
         const removed = this.removeAsteroidById(asteroid.id)
         // if broken asteroid was a big one, create 3 little pieces from its location
         // else, just remove it and done
@@ -180,7 +188,7 @@ export class ServerGameData {
         }
     }
 
-    private removeAsteroidById(id: string): ServerAsteroid | ServerAsteroidSmall | ServerAsteroidBig | null {
+    private removeAsteroidById(id: string): ServerAsteroid | ServerAsteroidSmall | ServerAsteroidBig | IServerAsteroid | null {
         const asteroids = this.asteroids
         const index = asteroids.findIndex(value => id === value.id)
         if (index >= 0) {
@@ -402,7 +410,7 @@ export class ServerPlayer implements CollidingObject {
         if (other instanceof ServerBullet) {
             this.gameEventsHandler.bulletKilledPlayer(<ServerBullet>other, this)
         } else if (other instanceof ServerAsteroid || other instanceof ServerAsteroidBig || other instanceof ServerAsteroidSmall) {
-            this.gameEventsHandler.asteroidKilledPlayer(<ServerAsteroid | ServerAsteroidSmall | ServerAsteroidBig>other, this)
+            this.gameEventsHandler.asteroidKilledPlayer(<ServerAsteroid | ServerAsteroidSmall | ServerAsteroidBig | IServerAsteroid>other, this)
         }
     }
 
@@ -562,7 +570,7 @@ export class ServerBullet implements CollidingObject {
 
 }
 
-export class ServerAsteroidBig implements CollidingObject {
+export class ServerAsteroidBig implements CollidingObject, IServerAsteroid {
     static readonly bigAsteroidVertexCount = 10
     static readonly smallAsteroidVertexCount = 5
 
@@ -573,15 +581,15 @@ export class ServerAsteroidBig implements CollidingObject {
     x!: number
     y!: number
     rotation: number = 0
-    private readonly rotationSpeed: number
-    private readonly velocity = new Victor(0, 0)
-    private speed: number
+    readonly rotationSpeed: number
+    readonly velocity = new Victor(0, 0)
+    speed: number
 
-    private color: RGBColor
+    color: RGBColor
 
     needNewTarget = true
 
-    private readonly outsideThreshold = 50
+    readonly outsideThreshold: number = 50
 
     readonly isBig: number
 
@@ -589,9 +597,9 @@ export class ServerAsteroidBig implements CollidingObject {
 
     readonly gameEventsHandler: GameEventsHandler
 
-    health = 3
+    health: number = 3
 
-    static createPieceOf(width: number, height: number, bigAsteroid: ServerAsteroid | ServerAsteroidSmall | ServerAsteroidBig): ServerAsteroid | ServerAsteroidSmall | ServerAsteroidBig {
+    static createPieceOf(width: number, height: number, bigAsteroid: ServerAsteroid | ServerAsteroidSmall | ServerAsteroidBig | IServerAsteroid): ServerAsteroid | ServerAsteroidSmall | ServerAsteroidBig | IServerAsteroid {
         const asteroid = new ServerAsteroid(width, height, 2, bigAsteroid.gameEventsHandler)
         asteroid.x = bigAsteroid.x + Utils.map(Math.random(), 0, 1, -20, 20)
         asteroid.y = bigAsteroid.y + Utils.map(Math.random(), 0, 1, -20, 20)
@@ -602,7 +610,7 @@ export class ServerAsteroidBig implements CollidingObject {
         return asteroid
     }
 
-    constructor(width: number, height: number, isBig: number, gameEventsHandler: GameEventsHandler) {
+    constructor(width: number, height: number, isBig: number, gameEventsHandler: GameEventsHandler, health:number = 3, color:RGBColor = { r: 255, g: 255, b: 0 }) {
         this.setRandomSpawnPoint(width, height)
         this.isBig = isBig
 
@@ -611,7 +619,7 @@ export class ServerAsteroidBig implements CollidingObject {
             this.speed = Utils.map(Math.random(), 0, 1, 1, 2)
             this.maxCollidingDistance = Utils.randInt(100, 120)
             this.minCollidingDistance = Utils.randInt(60, 80)
-            this.color = { r: 255, g: 255, b: 0 }
+            this.color = color
 
             const vertexCount = ServerAsteroidBig.bigAsteroidVertexCount
             for (let i = 0; i < vertexCount; i++) {
@@ -648,7 +656,7 @@ export class ServerAsteroidBig implements CollidingObject {
         this.needNewTarget = false
     }
 
-    private setRandomSpawnPoint(width: number, height: number) {
+    setRandomSpawnPoint(width: number, height: number) {
         const rand = Math.random()
         if (rand < 0.25) {
             this.x = Utils.randInt(-200, -100)
@@ -704,9 +712,14 @@ export class ServerAsteroidBig implements CollidingObject {
         }
     }
 
+    public clone(): this {
+        const clone = Object.create(this);
+        return clone;
+    }
+
 }
 
-export class ServerAsteroidSmall implements CollidingObject {
+export class ServerAsteroidSmall implements CollidingObject, IServerAsteroid {
     static readonly bigAsteroidVertexCount = 10
     static readonly smallAsteroidVertexCount = 5
 
@@ -725,7 +738,7 @@ export class ServerAsteroidSmall implements CollidingObject {
 
     needNewTarget = true
 
-    private readonly outsideThreshold = 50
+    readonly outsideThreshold: number = 50
 
     readonly isBig: number
 
@@ -735,7 +748,7 @@ export class ServerAsteroidSmall implements CollidingObject {
 
     readonly health = 1
 
-    static createPieceOf(width: number, height: number, bigAsteroid: ServerAsteroid|ServerAsteroidBig|ServerAsteroidSmall): ServerAsteroid|ServerAsteroidBig|ServerAsteroidSmall {
+    static createPieceOf(width: number, height: number, bigAsteroid: ServerAsteroid|ServerAsteroidBig|ServerAsteroidSmall|IServerAsteroid): ServerAsteroid|ServerAsteroidBig|ServerAsteroidSmall|IServerAsteroid {
         const asteroid = new ServerAsteroidSmall(width, height, 0, bigAsteroid.gameEventsHandler)
         asteroid.x = bigAsteroid.x + Utils.map(Math.random(), 0, 1, -20, 20)
         asteroid.y = bigAsteroid.y + Utils.map(Math.random(), 0, 1, -20, 20)
@@ -746,7 +759,7 @@ export class ServerAsteroidSmall implements CollidingObject {
         return asteroid
     }
 
-    constructor(width: number, height: number, isBig: number, gameEventsHandler: GameEventsHandler) {
+    constructor(width: number, height: number, isBig: number, gameEventsHandler: GameEventsHandler, health:number = 1, color:RGBColor = { r: 255, g: 0, b: 0 }) {
         this.setRandomSpawnPoint(width, height)
         this.isBig = isBig
 
@@ -754,7 +767,7 @@ export class ServerAsteroidSmall implements CollidingObject {
             this.speed = Utils.map(Math.random(), 0, 1, 1.5, 2.5)
             this.maxCollidingDistance = Utils.randInt(40, 60)
             this.minCollidingDistance = Utils.randInt(10, 30)
-            this.color = { r: 255, g: 0, b: 0 }
+            this.color = color
 
             const vertexCount = ServerAsteroidSmall.smallAsteroidVertexCount
             for (let i = 0; i < vertexCount; i++) {
@@ -792,7 +805,7 @@ export class ServerAsteroidSmall implements CollidingObject {
         this.needNewTarget = false
     }
 
-    private setRandomSpawnPoint(width: number, height: number) {
+    setRandomSpawnPoint(width: number, height: number) {
         const rand = Math.random()
         if (rand < 0.25) {
             this.x = Utils.randInt(-200, -100)
@@ -848,9 +861,13 @@ export class ServerAsteroidSmall implements CollidingObject {
         }
     }
 
+    public clone(): this {
+        const clone = Object.create(this);
+        return clone;
+    }
 }
 
-export class ServerAsteroid implements CollidingObject {
+export class ServerAsteroid implements CollidingObject, IServerAsteroid {
     static readonly bigAsteroidVertexCount = 10
     static readonly smallAsteroidVertexCount = 5
 
@@ -869,7 +886,7 @@ export class ServerAsteroid implements CollidingObject {
 
     needNewTarget = true
 
-    private readonly outsideThreshold = 50
+    readonly outsideThreshold: number = 50
 
     readonly isBig: number
 
@@ -879,7 +896,7 @@ export class ServerAsteroid implements CollidingObject {
 
     health = 2
 
-    static createPieceOf(width: number, height: number, bigAsteroid: ServerAsteroid|ServerAsteroidBig|ServerAsteroidSmall): ServerAsteroid|ServerAsteroidBig|ServerAsteroidSmall {
+    static createPieceOf(width: number, height: number, bigAsteroid: ServerAsteroid|ServerAsteroidBig|ServerAsteroidSmall|IServerAsteroid): ServerAsteroid|ServerAsteroidBig|ServerAsteroidSmall|IServerAsteroid {
         const asteroid = new ServerAsteroidSmall(width, height, 1, bigAsteroid.gameEventsHandler)
         asteroid.x = bigAsteroid.x + Utils.map(Math.random(), 0, 1, -20, 20)
         asteroid.y = bigAsteroid.y + Utils.map(Math.random(), 0, 1, -20, 20)
@@ -890,7 +907,7 @@ export class ServerAsteroid implements CollidingObject {
         return asteroid
     }
 
-    constructor(width: number, height: number, isBig: number, gameEventsHandler: GameEventsHandler) {
+    constructor(width: number, height: number, isBig: number, gameEventsHandler: GameEventsHandler, health:number = 2, color:RGBColor = { r: 0, g: 0, b: 255 }) {
         this.setRandomSpawnPoint(width, height)
         this.isBig = isBig
 
@@ -898,7 +915,8 @@ export class ServerAsteroid implements CollidingObject {
             this.speed = Utils.map(Math.random(), 0, 1, 1.5, 2.5)
             this.maxCollidingDistance = Utils.randInt(60, 80)
             this.minCollidingDistance = Utils.randInt(30, 50)
-            this.color = { r: 0, g: 0, b: 255 }
+            this.color = color
+            this.health = health
 
             const vertexCount = ServerAsteroid.smallAsteroidVertexCount
             for (let i = 0; i < vertexCount; i++) {
@@ -936,7 +954,7 @@ export class ServerAsteroid implements CollidingObject {
         this.needNewTarget = false
     }
 
-    private setRandomSpawnPoint(width: number, height: number) {
+    setRandomSpawnPoint(width: number, height: number) {
         const rand = Math.random()
         if (rand < 0.25) {
             this.x = Utils.randInt(-200, -100)
@@ -992,10 +1010,98 @@ export class ServerAsteroid implements CollidingObject {
         }
     }
 
+    public clone(): this {
+        const clone = Object.create(this);
+        return clone;
+    }
+
 }
 
 
 //Factory
+interface IServerAsteroid {
+    x: number
+    y: number
+    vertices: number[][]
+    minCollidingDistance: number
+    maxCollidingDistance: number
+    readonly isBig: number
+    readonly dtoObject: AsteroidDTO
+    readonly gameEventsHandler: GameEventsHandler
+    readonly id: string
+    needNewTarget: boolean
+    rotation: number
+    readonly rotationSpeed: number
+    readonly velocity: Victor
+    speed: number
+    color: RGBColor
+    outsideThreshold: number
+    health: number
+    checkCollidedWith(...othersArray: CollidingObject[][]): void
+    isCollisionTarget(other: CollidingObject): boolean
+    processCollidedWith(other: CollidingObject): void
+    clone():this
+    update(width: number, height: number): void
+    setRandomSpawnPoint(width: number, height: number): void
+    setTarget(x: number, y: number): void
+
+
+}
+
+abstract class AsteroidFactory {
+
+    public abstract CreateAsteroid(): IServerAsteroid;
+
+    public abstract gameEventsHandler: GameEventsHandler
+
+    constructor(gameEventsHandler: GameEventsHandler) {
+    }
+
+}
+
+class AsteroidSmallFactory extends AsteroidFactory {
+
+    public gameEventsHandler: GameEventsHandler
+
+    constructor(gameEventsHandler: GameEventsHandler) {
+        super(gameEventsHandler)
+        this.gameEventsHandler = gameEventsHandler
+    }
+
+    public CreateAsteroid(): IServerAsteroid {
+        return new ServerAsteroidSmall(4000, 4000, 1, this.gameEventsHandler);
+    }
+}
+
+class AsteroidBigFactory extends AsteroidFactory {
+
+    public gameEventsHandler: GameEventsHandler
+
+    constructor(gameEventsHandler: GameEventsHandler) {
+        super(gameEventsHandler)
+        this.gameEventsHandler = gameEventsHandler
+    }
+
+    public CreateAsteroid(): IServerAsteroid {
+        return new ServerAsteroidBig(4000, 4000, 3, this.gameEventsHandler);
+    }
+}
+
+class AsteroiBaseFactory extends AsteroidFactory {
+
+    public gameEventsHandler: GameEventsHandler
+
+    constructor(gameEventsHandler: GameEventsHandler) {
+        super(gameEventsHandler)
+        this.gameEventsHandler = gameEventsHandler
+    }
+
+    public CreateAsteroid(): IServerAsteroid {
+        return new ServerAsteroid(4000, 4000, 2, this.gameEventsHandler);
+    }
+}
+
+/*
 export class AsteroidFactory {
     private readonly gameEventsHandler: GameEventsHandler
 
@@ -1014,5 +1120,450 @@ export class AsteroidFactory {
         } else {
             return new ServerAsteroid(this.width, this.height, 2, this.gameEventsHandler);
         }
+    }
+}
+*/
+
+//Builder
+export class AsteroidBuilder {
+    private readonly gameEventsHandler: GameEventsHandler
+
+    private width: number = 4000
+    private height: number = 4000
+    private health: number = 2
+    private color: RGBColor = { r: 0, g: 0, b: 255 }
+    private size: number = 2
+
+    constructor(gameEventsHandler: GameEventsHandler) {
+        this.gameEventsHandler = gameEventsHandler
+    }
+
+    public setWidth(width: number) {
+        this.width = width
+    }
+
+    public setHeight(height: number) {
+        this.height = height
+    }
+
+    public setHealth(health: number) {
+        this.health = health
+    }
+
+    public setColor(color: RGBColor) {
+        this.color = color
+    }
+
+    public setSize(size: number) {
+        this.size = size
+    }
+
+    public createSmallAsteroid(): ServerAsteroidSmall {
+            return new ServerAsteroidSmall(this.width, this.height, this.size, this.gameEventsHandler, this.health, this.color);
+    }
+
+    public createAsteroid(): ServerAsteroid {
+        return new ServerAsteroid(this.width, this.height, this.size, this.gameEventsHandler, this.health, this.color);
+    }
+
+    public createBigAsteroid(): ServerAsteroidBig {
+        return new ServerAsteroidBig(this.width, this.height, this.size, this.gameEventsHandler, this.health, this.color);
+    }
+}
+
+//
+
+
+
+
+export class ServerAsteroidTarget implements CollidingObject {
+    static readonly bigAsteroidVertexCount = 10
+    static readonly smallAsteroidVertexCount = 5
+
+    readonly id: string = uuid()
+    readonly maxCollidingDistance: number
+    readonly minCollidingDistance: number
+    readonly vertices: number[][] = []
+    x!: number
+    y!: number
+    rotation: number = 0
+    readonly rotationSpeed: number
+    readonly velocity = new Victor(0, 0)
+    speed: number
+
+    color: RGBColor
+
+    needNewTarget = true
+
+    readonly outsideThreshold: number = 50
+
+    readonly isBig: number
+
+    readonly dtoObject: AsteroidDTO
+
+    readonly gameEventsHandler: GameEventsHandler
+
+    health = 2
+
+    static createPieceOf(width: number, height: number, bigAsteroid: ServerAsteroid|ServerAsteroidBig|ServerAsteroidSmall|IServerAsteroid): ServerAsteroid|ServerAsteroidBig|ServerAsteroidSmall|IServerAsteroid {
+        const asteroid = new ServerAsteroidSmall(width, height, 1, bigAsteroid.gameEventsHandler)
+        asteroid.x = bigAsteroid.x + Utils.map(Math.random(), 0, 1, -20, 20)
+        asteroid.y = bigAsteroid.y + Utils.map(Math.random(), 0, 1, -20, 20)
+        asteroid.needNewTarget = false
+        asteroid.velocity.x = Utils.map(Math.random(), 0, 1, -1, 1)
+        asteroid.velocity.y = Utils.map(Math.random(), 0, 1, -1, 1)
+        asteroid.velocity.norm().multiplyScalar(asteroid.speed)
+        return asteroid
+    }
+
+    constructor(width: number, height: number, isBig: number, gameEventsHandler: GameEventsHandler, health:number = 2, color:RGBColor = { r: 0, g: 0, b: 255 }) {
+        this.setRandomSpawnPoint(width, height)
+        this.isBig = isBig
+
+        this.rotationSpeed = Utils.map(Math.random(), 0, 1, 0.05, 0.07)
+        this.speed = Utils.map(Math.random(), 0, 1, 1.5, 2.5)
+        this.maxCollidingDistance = Utils.randInt(60, 80)
+        this.minCollidingDistance = Utils.randInt(30, 50)
+        this.color = color
+        this.health = health
+
+        const vertexCount = ServerAsteroid.smallAsteroidVertexCount
+        for (let i = 0; i < vertexCount; i++) {
+            const angle = Utils.map(i, 0, vertexCount, 0, Constants.TWO_PI)
+            const r = Utils.randInt(this.minCollidingDistance, this.maxCollidingDistance)
+            const x = r * Math.cos(angle)
+            const y = r * Math.sin(angle)
+            this.vertices.push([x, y])
+        }
+
+
+        this.dtoObject = {
+            id: this.id,
+            x: this.x,
+            y: this.y,
+            rotation: this.rotation,
+            vertices: this.vertices,
+            color: this.color,
+            health: this.health
+        }
+
+        this.gameEventsHandler = gameEventsHandler
+    }
+
+    setTarget(x: number, y: number): void {
+        // small asteroid is a little faster than big one
+        if (this.isBig) {
+            this.speed = Utils.map(Math.random(), 0, 1, 1, 2)
+        } else {
+            this.speed = Utils.map(Math.random(), 0, 1, 1.5, 2.5)
+        }
+        const v = new Victor(x, y).subtractScalarX(this.x).subtractScalarY(this.y).norm().multiplyScalar(this.speed)
+        this.velocity.x = v.x
+        this.velocity.y = v.y
+        this.needNewTarget = false
+    }
+
+    setRandomSpawnPoint(width: number, height: number) {
+        const rand = Math.random()
+        if (rand < 0.25) {
+            this.x = Utils.randInt(-200, -100)
+            this.y = Utils.randInt(0, height)
+        } else if (rand < 0.5) {
+            this.x = Utils.randInt(0, width)
+            this.y = Utils.randInt(-200, -100)
+        } else if (rand < 0.75) {
+            this.x = Utils.randInt(width + 100, width + 200)
+            this.y = Utils.randInt(0, height)
+        } else {
+            this.x = Utils.randInt(0, width)
+            this.y = Utils.randInt(height + 100, height + 200)
+        }
+    }
+
+    update(width: number, height: number): void {
+        this.rotation += this.rotationSpeed
+        this.x += this.velocity.x
+        this.y += this.velocity.y
+
+        const x = this.x
+        const y = this.y
+        const size = this.maxCollidingDistance
+        const outsideThreshold = this.outsideThreshold
+
+        if (!this.needNewTarget) {
+            this.needNewTarget = x - size > width + outsideThreshold || x + size < -outsideThreshold
+                || y - size > height + outsideThreshold || y + size < -outsideThreshold
+        }
+
+        // update dtoObject
+        const dto = this.dtoObject
+        dto.x = x
+        dto.y = y
+        dto.rotation = this.rotation
+    }
+
+    checkCollidedWith(...othersArray: CollidingObject[][]): void {
+        Utils.checkCollidedWith(this, othersArray)
+    }
+
+    isCollisionTarget(other: CollidingObject): boolean {
+        if (other instanceof ServerBullet && !other.needsToBeRecycled) {
+            return true
+        }
+        return false
+    }
+
+    processCollidedWith(other: CollidingObject): void {
+        if (other instanceof ServerBullet) {
+            this.gameEventsHandler.bulletKilledAsteroid(<ServerBullet>other, this)
+        }
+    }
+
+    public clone(): this {
+        const clone = Object.create(this);
+        return clone;
+    }
+
+    public setTargetColor(color: RGBColor) {
+        this.color = color;
+    }
+
+}
+
+
+export class ServerAsteroidAdaptee implements CollidingObject, IServerAsteroid {
+    static readonly bigAsteroidVertexCount = 10
+    static readonly smallAsteroidVertexCount = 5
+
+    readonly id: string = uuid()
+    readonly maxCollidingDistance: number
+    readonly minCollidingDistance: number
+    readonly vertices: number[][] = []
+    x!: number
+    y!: number
+    rotation: number = 0
+    readonly rotationSpeed: number
+    readonly velocity = new Victor(0, 0)
+    speed: number
+
+    color: RGBColor
+
+    needNewTarget = true
+
+    readonly outsideThreshold: number = 50
+
+    readonly isBig: number
+
+    readonly dtoObject: AsteroidDTO
+
+    readonly gameEventsHandler: GameEventsHandler
+
+    health = 2
+
+    static createPieceOf(width: number, height: number, bigAsteroid: ServerAsteroid|ServerAsteroidBig|ServerAsteroidSmall|IServerAsteroid): ServerAsteroid|ServerAsteroidBig|ServerAsteroidSmall|IServerAsteroid {
+        const asteroid = new ServerAsteroidSmall(width, height, 1, bigAsteroid.gameEventsHandler)
+        asteroid.x = bigAsteroid.x + Utils.map(Math.random(), 0, 1, -20, 20)
+        asteroid.y = bigAsteroid.y + Utils.map(Math.random(), 0, 1, -20, 20)
+        asteroid.needNewTarget = false
+        asteroid.velocity.x = Utils.map(Math.random(), 0, 1, -1, 1)
+        asteroid.velocity.y = Utils.map(Math.random(), 0, 1, -1, 1)
+        asteroid.velocity.norm().multiplyScalar(asteroid.speed)
+        return asteroid
+    }
+
+    constructor(width: number, height: number, isBig: number, gameEventsHandler: GameEventsHandler, health:number = 2, color:RGBColor = { r: 0, g: 0, b: 255 }) {
+        this.setRandomSpawnPoint(width, height)
+        this.isBig = isBig
+
+        this.rotationSpeed = Utils.map(Math.random(), 0, 1, 0.05, 0.07)
+        this.speed = Utils.map(Math.random(), 0, 1, 1.5, 2.5)
+        this.maxCollidingDistance = Utils.randInt(60, 80)
+        this.minCollidingDistance = Utils.randInt(30, 50)
+        this.color = color
+        this.health = health
+
+        const vertexCount = ServerAsteroid.smallAsteroidVertexCount
+        for (let i = 0; i < vertexCount; i++) {
+            const angle = Utils.map(i, 0, vertexCount, 0, Constants.TWO_PI)
+            const r = Utils.randInt(this.minCollidingDistance, this.maxCollidingDistance)
+            const x = r * Math.cos(angle)
+            const y = r * Math.sin(angle)
+            this.vertices.push([x, y])
+        }
+
+
+        this.dtoObject = {
+            id: this.id,
+            x: this.x,
+            y: this.y,
+            rotation: this.rotation,
+            vertices: this.vertices,
+            color: this.color,
+            health: this.health
+        }
+
+        this.gameEventsHandler = gameEventsHandler
+    }
+
+    setTarget(x: number, y: number): void {
+        // small asteroid is a little faster than big one
+        if (this.isBig) {
+            this.speed = Utils.map(Math.random(), 0, 1, 1, 2)
+        } else {
+            this.speed = Utils.map(Math.random(), 0, 1, 1.5, 2.5)
+        }
+        const v = new Victor(x, y).subtractScalarX(this.x).subtractScalarY(this.y).norm().multiplyScalar(this.speed)
+        this.velocity.x = v.x
+        this.velocity.y = v.y
+        this.needNewTarget = false
+    }
+
+    setRandomSpawnPoint(width: number, height: number) {
+        const rand = Math.random()
+        if (rand < 0.25) {
+            this.x = Utils.randInt(-200, -100)
+            this.y = Utils.randInt(0, height)
+        } else if (rand < 0.5) {
+            this.x = Utils.randInt(0, width)
+            this.y = Utils.randInt(-200, -100)
+        } else if (rand < 0.75) {
+            this.x = Utils.randInt(width + 100, width + 200)
+            this.y = Utils.randInt(0, height)
+        } else {
+            this.x = Utils.randInt(0, width)
+            this.y = Utils.randInt(height + 100, height + 200)
+        }
+    }
+
+    update(width: number, height: number): void {
+        this.rotation += this.rotationSpeed
+        this.x += this.velocity.x
+        this.y += this.velocity.y
+
+        const x = this.x
+        const y = this.y
+        const size = this.maxCollidingDistance
+        const outsideThreshold = this.outsideThreshold
+
+        if (!this.needNewTarget) {
+            this.needNewTarget = x - size > width + outsideThreshold || x + size < -outsideThreshold
+                || y - size > height + outsideThreshold || y + size < -outsideThreshold
+        }
+
+        // update dtoObject
+        const dto = this.dtoObject
+        dto.x = x
+        dto.y = y
+        dto.rotation = this.rotation
+    }
+
+    checkCollidedWith(...othersArray: CollidingObject[][]): void {
+        Utils.checkCollidedWith(this, othersArray)
+    }
+
+    isCollisionTarget(other: CollidingObject): boolean {
+        if (other instanceof ServerBullet && !other.needsToBeRecycled) {
+            return true
+        }
+        return false
+    }
+
+    processCollidedWith(other: CollidingObject): void {
+        if (other instanceof ServerBullet) {
+            this.gameEventsHandler.bulletKilledAsteroid(<ServerBullet>other, this)
+        }
+    }
+
+    public clone(): this {
+        const clone = Object.create(this);
+        return clone;
+    }
+
+    setAdapteeColor(color: RGBColor)
+    {
+        this.color = color
+    }
+
+}
+
+
+class ServerAsteroidAdapter extends ServerAsteroidTarget {
+    private adaptee: ServerAsteroidAdaptee;
+
+    constructor(width: number, height: number, size: number, gameEventsHandler: GameEventsHandler, health: number, color: RGBColor, adaptee: ServerAsteroidAdaptee) {
+        super(width, height, size, gameEventsHandler, health, color);
+        this.adaptee = adaptee;
+    }
+
+    public setColor(color: RGBColor) {
+        this.adaptee.setAdapteeColor(color);
+    }
+}
+
+class AsteroidDecorator implements IServerAsteroid {
+    //base properties
+    x: number = 4000
+    y: number = 4000
+    vertices: number[][] = []
+    minCollidingDistance: number = Utils.randInt(60, 80)
+    maxCollidingDistance: number = Utils.randInt(30, 50)
+    readonly isBig: number = 1
+
+    readonly gameEventsHandler: GameEventsHandler
+    readonly id: string = uuid()
+    needNewTarget: boolean = false
+    rotation: number = 0
+    readonly rotationSpeed: number = Utils.map(Math.random(), 0, 1, 0.05, 0.07)
+    readonly velocity: Victor = new Victor(0, 0)
+    speed: number = Utils.map(Math.random(), 0, 1, 1.5, 2.5)
+    color: RGBColor = { r: 0, g: 0, b: 255 }
+    outsideThreshold: number = 50
+    health: number = 1
+    readonly dtoObject: AsteroidDTO = {
+        id: this.id,
+        x: this.x,
+        y: this.y,
+        rotation: this.rotation,
+        vertices: this.vertices,
+        color: this.color,
+        health: this.health
+    }
+
+    checkCollidedWith(...othersArray: CollidingObject[][]): void
+    {}
+    isCollisionTarget(other: CollidingObject): boolean
+    {
+        return true;
+    }
+    processCollidedWith(other: CollidingObject): void
+    {}
+    clone():this
+    {
+        const clone = Object.create(this);
+        return clone;
+    }
+    update(width: number, height: number): void
+    {}
+    setRandomSpawnPoint(width: number, height: number): void
+    {}
+    setTarget(x: number, y: number): void
+    {}
+
+    protected component: ServerAsteroid;
+
+    constructor(component: ServerAsteroid, gameEventsHandler: GameEventsHandler) {
+        this.component = component;
+        this.gameEventsHandler = gameEventsHandler
+    }
+
+    /**
+     * The Decorator delegates all work to the wrapped component.
+     */
+    public getHealth() {
+        return this.component.health + 1;
+    }
+
+    public getSize() {
+        return this.component.isBig + 1;
     }
 }
