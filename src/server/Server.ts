@@ -6,7 +6,8 @@ import {
     ServerAsteroid,
     ServerBullet,
     ServerGameData,
-    ServerPlayer
+    ServerPlayer,
+    PowerUp
 } from "./ServerModels"
 import {RGBColor} from "react-color"
 import {PlayerInputDTO} from "../shared/DTOs"
@@ -137,12 +138,44 @@ class Server implements GameEventsHandler {
         gameData.breakAsteroid(asteroid)
     }
 
+    powerupKilledPlayer(powerUp: PowerUp, player: ServerPlayer): void {
+        const gameData = this.gameData
+        //const killedPlayer = gameData.upgradePlayerById(player.id)
+        /*
+        if (killedPlayer) {
+            // recycle all bullets fired by this killedPlayer
+            gameData.recycleBulletsByFirerId(killedPlayer.id)
+
+            const killedPlayerSocket = this.connectedSockets.find(socket => socket.id === killedPlayer.id)
+            if (killedPlayerSocket) {
+                killedPlayerSocket.me = null
+                ServerSocketEventsHelper.sendKilledByAsteroidEvent(killedPlayerSocket, killedPlayer.dtoObject)
+            }
+        }
+*/
+        // do damage to the asteroid
+        gameData.breakPowerUp(powerUp)
+    }
+
     bulletKilledAsteroid(bullet: ServerBullet, asteroid: ServerAsteroid): void {
         const gameData = this.gameData
         if (bullet.firerId) {
             const firer = gameData.getPlayerWithId(bullet.firerId)
             if (firer) {
                 gameData.breakAsteroid(asteroid)
+                firer.increaseAsteroidPoint()
+            }
+        }
+
+        gameData.recycleBulletById(bullet.id)
+    }
+
+    bulletKilledPowerup(bullet: ServerBullet, powerUp: PowerUp): void {
+        const gameData = this.gameData
+        if (bullet.firerId) {
+            const firer = gameData.getPlayerWithId(bullet.firerId)
+            if (firer) {
+                gameData.breakPowerUp(powerUp)
                 firer.increaseAsteroidPoint()
             }
         }

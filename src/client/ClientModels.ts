@@ -1,4 +1,4 @@
-import {AsteroidDTO, BulletDTO, GameDataDTO, PlayerDTO} from "../shared/DTOs"
+import {AsteroidDTO, BulletDTO, GameDataDTO, PlayerDTO, PowerUpDTO} from "../shared/DTOs"
 import P5Functions from "./P5Functions"
 import Utils from "../shared/Utils"
 import {RGBColor} from "react-color"
@@ -9,6 +9,7 @@ export class ClientGameData {
     private readonly players: ClientPlayer[] = []
     private readonly bullets: ClientBullet[] = []
     readonly asteroids: ClientAsteroid[] = []
+    readonly powerups: ClientPowerUp[] = []
 
     // properties used for camera following player effect
     private readonly playerViewScaleRatio = 3.6
@@ -55,6 +56,12 @@ export class ClientGameData {
             n => new ClientAsteroid(n, this.p5)
         )
 
+        Utils.updateArrayData(this.powerups, newData.powerups,
+            (e, n) => e.id === n.id,
+            (e, n) => e.update(n),
+            n => new ClientPowerUp(n, this.p5)
+        )
+
         if (this.width != newData.width || this.height != newData.height) {
             this.playerViewMinX = newData.width / 2 / this.playerViewScaleRatio
             this.playerViewMaxX = newData.width - this.playerViewMinX
@@ -93,6 +100,10 @@ export class ClientGameData {
 
         for (let asteroid of this.asteroids) {
             asteroid.draw()
+        }
+
+        for (let powerup of this.powerups) {
+            powerup.draw()
         }
 
         p5.restore()
@@ -328,6 +339,49 @@ export class ClientAsteroid {
     }
 
     update(newData: AsteroidDTO): void {
+        this.x = newData.x
+        this.y = newData.y
+        this.rotation = newData.rotation
+    }
+
+    draw(): void {
+        const p5 = this.p5
+        p5.save()
+        p5.translate(this.x, this.y)
+        p5.rotate(this.rotation)
+        p5.fill(this.color.r, this.color.g, this.color.b)
+        p5.stroke(this.color.r, this.color.g, this.color.b)
+        p5.beginShape()
+        for (let vertex of this.vertices) {
+            p5.vertex(vertex[0], vertex[1])
+        }
+        p5.endShape()
+        p5.restore()
+    }
+}
+
+export class ClientPowerUp {
+    readonly id: string
+    readonly vertices: number[][]
+    private x: number
+    private y: number
+    private rotation: number
+    private color: RGBColor
+
+    private readonly p5: P5Functions
+
+    constructor(dto: PowerUpDTO, p5: P5Functions) {
+        this.id = dto.id
+        this.vertices = dto.vertices
+        this.x = dto.x
+        this.y = dto.y
+        this.rotation = dto.rotation
+        this.color = dto.color
+
+        this.p5 = p5
+    }
+
+    update(newData: PowerUpDTO): void {
         this.x = newData.x
         this.y = newData.y
         this.rotation = newData.rotation

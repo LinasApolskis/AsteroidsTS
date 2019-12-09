@@ -1,5 +1,5 @@
 import {Socket} from "socket.io"
-import {AsteroidDTO, BulletDTO, GameDataDTO, PlayerDTO, PlayerInputDTO} from "../shared/DTOs"
+import {AsteroidDTO, BulletDTO, GameDataDTO, PlayerDTO, PlayerInputDTO, PowerUpDTO} from "../shared/DTOs"
 import {RGBColor} from "react-color"
 import {Constants} from "../shared/Constants"
 import Utils from "../shared/Utils"
@@ -13,6 +13,8 @@ export interface DomainSocket extends Socket {
 export interface GameEventsHandler {
     bulletKilledPlayer(bullet: ServerBullet, player: ServerPlayer): void
     bulletKilledAsteroid(bullet: ServerBullet, asteroid: ServerAsteroid|ServerAsteroidSmall|ServerAsteroidBig): void
+    bulletKilledPowerup(bullet: ServerBullet, powerUp: PowerUp): void
+    powerupKilledPlayer(powerUp: PowerUp, player: ServerPlayer): void
     asteroidKilledPlayer(asteroid: ServerAsteroid|ServerAsteroidSmall|ServerAsteroidBig, player: ServerPlayer): void
 }
 
@@ -37,10 +39,13 @@ export class ServerGameData {
     // todo: change list to map for faster add/remove/query
     private readonly bulletHouse: BulletHouse = new BulletHouse()
     private readonly asteroids: (ServerAsteroid|ServerAsteroidBig|ServerAsteroidSmall|IServerAsteroid)[] = []
+    private readonly powerups: PowerUp[] = []
 
     private readonly minBigAsteroidCount = 7
     private readonly bigAsteroidCountMultiplesOfPlayer = 3
     private curBigAsteroidsCount = 0
+    private readonly minPowerUpsCount = 7
+    private curPowerUpsCount = 0
 
     // DTO object (i.e. saturated data for sending over internet) of this object
     // keeps sync with this object in update() function
@@ -63,6 +68,7 @@ export class ServerGameData {
 
         // add initial asteroids
         const asteroidas = new ServerAsteroid(w, h, 2, gameEventsHandler)
+
         for (let i = 0; i < this.minBigAsteroidCount; i++) {
             //this.asteroids.push(new ServerAsteroid(w, h, 2, gameEventsHandler))
             this.asteroids.push(asteroidas.clone())
@@ -72,12 +78,18 @@ export class ServerGameData {
             this.curBigAsteroidsCount++
         }
 
+        for (let i = 0; i < this.minPowerUpsCount; i++) {
+            this.powerups.push(new PowerUp(4000, 4000, gameEventsHandler))
+            this.curPowerUpsCount++
+        }
+
         this.dtoObject = {
             width: this.width,
             height: this.height,
             players: Array.from(this.players.values()).map(value => value.dtoObject),
             bullets: this.bulletHouse.bullets.map(bullet => bullet.dtoObject),
-            asteroids: this.asteroids.map(value => value.dtoObject)
+            asteroids: this.asteroids.map(value => value.dtoObject),
+            powerups: this.powerups.map(value => value.dtoObject)
         }
 
         this.gameEventsHandler = gameEventsHandler
@@ -89,6 +101,7 @@ export class ServerGameData {
         const players = this.players
         const bulletHouse = this.bulletHouse
         const asteroids = this.asteroids
+        const powerups = this.powerups
 
         // update position, color etc of all child data
         players.forEach(player => player.update(width, height))
@@ -109,6 +122,11 @@ export class ServerGameData {
                     asteroids.splice(i--, 1)
                 }
             }
+        }
+
+        for (let i = 0; i < powerups.length; i++) {
+            const powerup = powerups[i]
+            powerup.update(width, height)
         }
 
         // do collision detection
@@ -138,6 +156,7 @@ export class ServerGameData {
         dto.players = Array.from(this.players.values()).map(value => value.dtoObject)
         dto.bullets = this.bulletHouse.bullets.map(bullet => bullet.dtoObject)
         dto.asteroids = this.asteroids.map(value => value.dtoObject)
+        dto.powerups = this.powerups.map(value => value.dtoObject)
     }
 
     addPlayer(id: string, name: string, color: RGBColor): ServerPlayer {
@@ -188,12 +207,29 @@ export class ServerGameData {
         }
     }
 
+    breakPowerUp(powerUp: PowerUp): void {
+        const removed = this.removePowerUpById(powerUp.id)
+        this.curPowerUpsCount--
+    }
+
     private removeAsteroidById(id: string): ServerAsteroid | ServerAsteroidSmall | ServerAsteroidBig | IServerAsteroid | null {
         const asteroids = this.asteroids
         const index = asteroids.findIndex(value => id === value.id)
         if (index >= 0) {
             const removing = asteroids[index]
             asteroids.splice(index, 1)
+            return removing
+        } else {
+            return null
+        }
+    }
+
+    private removePowerUpById(id: string): PowerUp | null {
+        const powerups = this.powerups
+        const index = powerups.findIndex(value => id === value.id)
+        if (index >= 0) {
+            const removing = powerups[index]
+            powerups.splice(index, 1)
             return removing
         } else {
             return null
@@ -1566,4 +1602,119 @@ class AsteroidDecorator implements IServerAsteroid {
     public getSize() {
         return this.component.isBig + 1;
     }
+}
+
+
+export class PowerUp implements CollidingObject {
+    static readonly VertexCount = 4
+
+    readonly id: string = uuid()
+    readonly maxCollidingDistance: number
+    readonly minCollidingDistance: number
+    readonly vertices: number[][] = []
+    x!: number
+    y!: number
+    rotation: number = 0
+    readonly rotationSpeed: number
+    readonly velocity = new Victor(0, 0)
+    speed: number
+
+    color: RGBColor
+
+    needNewTarget = true
+
+    readonly outsideThreshold: number = 50
+
+    readonly dtoObject: PowerUpDTO
+
+    readonly gameEventsHandler: GameEventsHandler
+
+    constructor(width: number, height: number, gameEventsHandler: GameEventsHandler, color:RGBColor = { r: 0, g: 255, b: 0 }) {
+        this.setRandomSpawnPoint(width, height)
+
+        this.rotationSpeed = Utils.map(Math.random(), 0, 1, 0.05, 0.07)
+        this.speed = Utils.map(Math.random(), 0, 1, 1.5, 2.5)
+        this.maxCollidingDistance = Utils.randInt(60, 80)
+        this.minCollidingDistance = Utils.randInt(30, 50)
+        this.color = color
+
+        const vertexCount = PowerUp.VertexCount
+        for (let i = 0; i < vertexCount; i++) {
+            const angle = Utils.map(i, 0, vertexCount, 0, Constants.TWO_PI)
+            const r = Utils.randInt(this.minCollidingDistance, this.maxCollidingDistance)
+            const x = r * Math.cos(angle)
+            const y = r * Math.sin(angle)
+            this.vertices.push([x, y])
+        }
+
+
+        this.dtoObject = {
+            id: this.id,
+            x: this.x,
+            y: this.y,
+            rotation: this.rotation,
+            vertices: this.vertices,
+            color: this.color
+        }
+
+        this.gameEventsHandler = gameEventsHandler
+    }
+
+    setTarget(x: number, y: number): void {
+        this.speed = Utils.map(Math.random(), 0, 1, 1.5, 2.5)
+        const v = new Victor(x, y).subtractScalarX(this.x).subtractScalarY(this.y).norm().multiplyScalar(this.speed)
+        this.velocity.x = v.x
+        this.velocity.y = v.y
+        this.needNewTarget = false
+    }
+
+    setRandomSpawnPoint(width: number, height: number) {
+            this.x = Utils.randInt(0, width)
+            this.y = Utils.randInt(0, height)
+    }
+
+    update(width: number, height: number): void {
+        this.rotation += this.rotationSpeed
+        this.x += this.velocity.x
+        this.y += this.velocity.y
+
+        const x = this.x
+        const y = this.y
+        const size = this.maxCollidingDistance
+        const outsideThreshold = this.outsideThreshold
+
+        if (!this.needNewTarget) {
+            this.needNewTarget = x - size > width + outsideThreshold || x + size < -outsideThreshold
+                || y - size > height + outsideThreshold || y + size < -outsideThreshold
+        }
+
+        // update dtoObject
+        const dto = this.dtoObject
+        dto.x = x
+        dto.y = y
+        dto.rotation = this.rotation
+    }
+
+    checkCollidedWith(...othersArray: CollidingObject[][]): void {
+        Utils.checkCollidedWith(this, othersArray)
+    }
+
+    isCollisionTarget(other: CollidingObject): boolean {
+        if (other instanceof ServerBullet && !other.needsToBeRecycled) {
+            return true
+        }
+        return false
+    }
+
+    processCollidedWith(other: CollidingObject): void {
+        if (other instanceof ServerBullet) {
+            this.gameEventsHandler.bulletKilledPowerup(<ServerBullet>other, this)
+        }
+    }
+
+    public clone(): this {
+        const clone = Object.create(this);
+        return clone;
+    }
+
 }

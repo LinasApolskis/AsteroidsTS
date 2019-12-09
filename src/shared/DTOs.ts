@@ -7,6 +7,7 @@ export interface GameDataDTO {
     players: PlayerDTO[]
     bullets: BulletDTO[]
     asteroids: AsteroidDTO[]
+    powerups: PowerUpDTO[]
 }
 
 export interface PlayerDTO {
@@ -47,4 +48,13 @@ export interface AsteroidDTO {
     vertices: number[][]
     color: RGBColor
     health: number
+}
+
+export interface PowerUpDTO {
+    id: string
+    x: number
+    y: number
+    rotation: number
+    vertices: number[][]
+    color: RGBColor
 }
