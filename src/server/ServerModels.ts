@@ -137,7 +137,12 @@ export class ServerGameData {
             asteroids[i].checkCollidedWith(bullets)
         }
 
-        players.forEach(player => player.checkCollidedWith(asteroids, bullets))
+        let k = powerups.length
+        while (k--) {
+            powerups[k].checkCollidedWith(bullets)
+        }
+
+        players.forEach(player => player.checkCollidedWith(asteroids, bullets, powerups))
 
         // big asteroids may have been reduced in size due to above collision processing.
         // add some more if necessary
@@ -438,6 +443,8 @@ export class ServerPlayer implements CollidingObject {
             return true
         } else if (other instanceof ServerAsteroid || other instanceof ServerAsteroidBig || other instanceof ServerAsteroidSmall) {
             return true
+        } else if (other instanceof PowerUp) {
+            return true
         }
         return false
     }
@@ -447,6 +454,8 @@ export class ServerPlayer implements CollidingObject {
             this.gameEventsHandler.bulletKilledPlayer(<ServerBullet>other, this)
         } else if (other instanceof ServerAsteroid || other instanceof ServerAsteroidBig || other instanceof ServerAsteroidSmall) {
             this.gameEventsHandler.asteroidKilledPlayer(<ServerAsteroid | ServerAsteroidSmall | ServerAsteroidBig | IServerAsteroid>other, this)
+        } else if (other instanceof PowerUp) {
+            this.gameEventsHandler.powerupKilledPlayer(<PowerUp>other, this)
         }
     }
 
@@ -456,6 +465,10 @@ export class ServerPlayer implements CollidingObject {
 
     increaseKillingPoint(): void {
         this.killingPoints++
+    }
+
+    increaseInvinciblity(): void {
+        this.invincibleCountdown += 255;
     }
 }
 

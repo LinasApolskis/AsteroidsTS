@@ -140,7 +140,15 @@ class Server implements GameEventsHandler {
 
     powerupKilledPlayer(powerUp: PowerUp, player: ServerPlayer): void {
         const gameData = this.gameData
-        //const killedPlayer = gameData.upgradePlayerById(player.id)
+        const killedPlayer = gameData.getPlayerWithId(player.id)
+
+        if (killedPlayer) {
+            killedPlayer.increaseInvinciblity();
+        }
+
+        //Change player stats
+
+
         /*
         if (killedPlayer) {
             // recycle all bullets fired by this killedPlayer
@@ -154,6 +162,7 @@ class Server implements GameEventsHandler {
         }
 */
         // do damage to the asteroid
+
         gameData.breakPowerUp(powerUp)
     }
 
