@@ -497,7 +497,91 @@ export class ServerPlayer implements CollidingObject {
     setRate(rate: number): void {
         this.fireInterval = rate;
     }
+
+    public save(): Memento {
+        return new ConcreteMemento(this.state);
+    }
+
+    /**
+     * Restores the Originator's state from a memento object.
+     */
+    public restore(memento: Memento): void {
+        this.state = memento.getState();
+        console.log(`Originator: My state has changed to: ${this.state}`);
+    }
 }
+
+interface Memento {
+    getState(): State;
+
+    getName(): string;
+
+    getDate(): string;
+}
+
+class ConcreteMemento implements Memento {
+    private state: State;
+
+    private date: string;
+
+    constructor(state: State) {
+        this.state = state;
+        this.date = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    }
+
+    /**
+     * The Originator uses this method when restoring its state.
+     */
+    public getState(): State {
+        return this.state;
+    }
+
+    /**
+     * The rest of the methods are used by the Caretaker to display metadata.
+     */
+    public getName(): string {
+        return `${this.date} / (${this.state}...)`;
+    }
+
+    public getDate(): string {
+        return this.date;
+    }
+}
+
+class Caretaker {
+    private mementos: Memento[] = [];
+
+    private originator: ServerPlayer;
+
+    constructor(originator: ServerPlayer) {
+        this.originator = originator;
+    }
+
+    public backup(): void {
+        console.log('\nCaretaker: Saving Originator\'s state...');
+        this.mementos.push(this.originator.save());
+    }
+
+    public undo(): void {
+        if (!this.mementos.length) {
+            return;
+        }
+        const memento = this.mementos.pop();
+
+        // @ts-ignore
+        console.log(`Caretaker: Restoring state to: ${memento.getName()}`);
+        // @ts-ignore
+        this.originator.restore(memento);
+    }
+
+    public showHistory(): void {
+        console.log('Caretaker: Here\'s the list of mementos:');
+        for (const memento of this.mementos) {
+            console.log(memento.getName());
+        }
+    }
+}
+
 abstract class State {
     protected context: ServerPlayer|null = null;
 
