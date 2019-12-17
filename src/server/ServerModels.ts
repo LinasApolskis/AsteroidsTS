@@ -66,6 +66,8 @@ export class ServerGameData {
         //Builder pattern
         const asteroidBuilder = new AsteroidBuilder(gameEventsHandler)
 
+        //asteroidBuilder->set
+
         // add initial asteroids
         const asteroidas = new ServerAsteroid(w, h, 2, gameEventsHandler)
 
@@ -275,7 +277,7 @@ export class ServerPlayer implements CollidingObject {
     private isBoosting = false
 
     private isFiring = false
-    private readonly fireInterval = 1000 / 4
+    private fireInterval = 1000 / 4
     private now = 0
     private then = Date.now()
     private fireDelta = 0
@@ -295,6 +297,8 @@ export class ServerPlayer implements CollidingObject {
 
     // when this player is created, it is invincible for this amount of frames
     private invincibleCountdown = 255
+
+    private state: State;
 
     get isInvincible(): boolean {
         return this.invincibleCountdown > 0
@@ -329,6 +333,21 @@ export class ServerPlayer implements CollidingObject {
         }
 
         this.gameEventsHandler = gameEventsHandler
+        this.state = new ConcreteStateA();
+    }
+
+    public transitionTo(state: State): void {
+        console.log(`Context: Transition to ${(<any>state).constructor.name}.`);
+        this.state = state;
+        this.state.setContext(this);
+    }
+
+    public request1(): void {
+        this.state.handle1();
+    }
+
+    public request2(): void {
+        this.state.handle2();
     }
 
     applyInput(input: PlayerInputDTO): void {
@@ -388,6 +407,8 @@ export class ServerPlayer implements CollidingObject {
             this.currentColor.g = Utils.randInt(Utils.map(countdown, 0, 255, origColor.g, 0), origColor.g)
             this.currentColor.b = Utils.randInt(Utils.map(countdown, 0, 255, origColor.b, 0), origColor.b)
         } else {
+            this.transitionTo(new ConcreteStateA());
+            this.state.handle1();
             this.currentColor.r = origColor.r
             this.currentColor.g = origColor.g
             this.currentColor.b = origColor.b
@@ -456,6 +477,8 @@ export class ServerPlayer implements CollidingObject {
             this.gameEventsHandler.asteroidKilledPlayer(<ServerAsteroid | ServerAsteroidSmall | ServerAsteroidBig | IServerAsteroid>other, this)
         } else if (other instanceof PowerUp) {
             this.gameEventsHandler.powerupKilledPlayer(<PowerUp>other, this)
+            this.transitionTo(new ConcreteStateB());
+            this.state.handle1();
         }
     }
 
@@ -469,6 +492,50 @@ export class ServerPlayer implements CollidingObject {
 
     increaseInvinciblity(): void {
         this.invincibleCountdown += 255;
+    }
+
+    setRate(rate: number): void {
+        this.fireInterval = rate;
+    }
+}
+abstract class State {
+    protected context: ServerPlayer|null = null;
+
+    public setContext(context: ServerPlayer) {
+        this.context = context;
+    }
+
+    public abstract handle1(): void;
+
+    public abstract handle2(): void;
+}
+
+class ConcreteStateA extends State {
+    public handle1(): void {
+        // @ts-ignore
+        //this.context.transitionTo(new ConcreteStateB());
+        // @ts-ignore
+        this.context.setRate(250);
+    }
+
+    public handle2(): void {
+    }
+}
+
+class ConcreteStateB extends State {
+    public handle1(): void {
+        // @ts-ignore
+        //this.context.transitionTo(new ConcreteStateA());
+        // @ts-ignore
+        this.context.setRate(0.1);
+        // @ts-ignore
+        this.context.increaseInvinciblity();
+        // @ts-ignore
+        this.context.increaseInvinciblity();
+    }
+
+    public handle2(): void {
+
     }
 }
 
